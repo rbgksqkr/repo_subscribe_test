@@ -13,8 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Resolve default branch
         id: def
@@ -23,54 +21,22 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22" # Corepack 포함
+          node-version: 22
 
-      # 1) Corepack 활성화
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        id: yarn-cache
+        with:
+          path: |
+            **/node_modules
+            .yarn/cache
+          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
-      # 2) packageManager 기반으로 Yarn 버전 강제 활성화
-      - name: Activate Yarn from packageManager
-        id: yarnpm
-        run: |
-          set -e
-          VER=$(node -p "require('./package.json').packageManager?.split('@')[1] || ''")
-          if [ -z "$VER" ]; then
-            echo "packageManager에 yarn@버전이 없습니다. (.yarnrc.yml의 yarnPath 사용 중인지 확인)"
-          else
-            echo "Activating yarn@${VER}"
-            corepack prepare "yarn@${VER}" --activate
-            echo "yarn_version=${VER}" >> $GITHUB_OUTPUT
-          fi
-
-      # 3) 실제 쓰일 바이너리/버전 확인 (중요: 'corepack yarn')
-      - name: Check Yarn binary & version
-        run: |
-          echo "which yarn      : $(command -v yarn || true)"
-          echo "corepack bins   : $(corepack bins || true)"
-          corepack yarn -v
-
-      # 4) 설치 단계도 모두 'corepack yarn' 사용
-      - name: Install deps (respect lockfile)
-        run: |
-          YV=$(corepack yarn -v); YM=${YV%%.*}
-          if [ "$YM" -ge 2 ]; then
-            corepack yarn install --immutable
-          else
-            corepack yarn install --frozen-lockfile
-          fi
-
-      # 5) 업데이트도 'corepack yarn' 사용
-      - name: Update dependencies within semver ranges
-        id: update
-        run: |
-          YV=$(corepack yarn -v); YM=${YV%%.*}
-          echo "Detected Yarn $YV"
-          if [ "$YM" -ge 2 ]; then
-            corepack yarn up -R
-          else
-            corepack yarn upgrade
-          fi
+      - name: Install dependencies
+        if: steps.yarn-cache.outputs.cache-hit != 'true'
+        run: yarn
 
       - name: Create working branch
         run: |

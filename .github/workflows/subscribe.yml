@@ -4,9 +4,85 @@ on:
   repository_dispatch:
     types: [package-update]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   demo:
     runs-on: ubuntu-latest
 
     steps:
-      - run: echo Repository Dispatch
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve default branch
+        id: def
+        run: |
+          echo "base=${{ github.event.repository.default_branch }}" >> $GITHUB_OUTPUT
+
+      - name: Setup Node & Yarn
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "yarn"
+      - run: corepack enable
+
+      - name: Install (no change) to warm cache
+        run: yarn install --immutable || yarn install
+
+      - name: Update dependencies within semver ranges
+        id: update
+        run: |
+          set -e
+          YARN_VER=$(yarn -v)
+          YARN_MAJOR=$(echo "$YARN_VER" | cut -d. -f1)
+          echo "Detected Yarn $YARN_VER"
+
+          if [ "$YARN_MAJOR" -ge 2 ]; then
+            # Yarn Berry: 워크스페이스 전체를 범위 내 최신으로 갱신
+            yarn up -R
+          else
+            # Yarn v1: 범위 내 최신으로 갱신
+            yarn upgrade
+          fi
+
+      - name: Create working branch
+        run: |
+          BR="chore/package-update-$(date +%Y%m%d%H%M%S)"
+          echo "$BR" > .git/branch_name
+          git checkout ${{ steps.def.outputs.base }}
+          git pull --ff-only origin ${{ steps.def.outputs.base }}
+          git checkout -b "$BR"
+
+      - name: Commit changes (if any)
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes after upgrade; nothing to commit."
+            echo "no_changes=1" >> $GITHUB_OUTPUT
+          else
+            git -c user.name="github-actions[bot]" \
+                -c user.email="github-actions[bot]@users.noreply.github.com" \
+                commit -m "chore: package version update"
+          fi
+
+      - name: Push branch
+        if: steps.update.outcome == 'success'
+        run: |
+          if [ -f .git/branch_name ] && ! git diff --cached --quiet; then
+            BR=$(cat .git/branch_name)
+            git push -u origin "$BR"
+          fi
+
+      - name: Open PR
+        if: ${{ success() }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ${{ github.ref_name }} # create-pull-request가 현재 브랜치를 자동 감지
+          base: ${{ steps.def.outputs.base }}
+          title: "package version update"
+          body: "Automated update triggered by repository_dispatch."
+          labels: dependencies
+          signoff: true

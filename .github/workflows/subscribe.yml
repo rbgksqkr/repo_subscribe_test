@@ -11,7 +11,6 @@ permissions:
 jobs:
   demo:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,35 +21,59 @@ jobs:
         run: |
           echo "base=${{ github.event.repository.default_branch }}" >> $GITHUB_OUTPUT
 
-      - name: Setup Node & Yarn
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - run: corepack enable
+          node-version: "22" # Node 16.10+면 corepack 포함
 
-      - name: Install (no change) to warm cache
-        run: yarn install --immutable || yarn install
+      # ← 중요: checkout 직후 corepack 활성화
+      - name: Enable corepack
+        run: corepack enable
+
+      # package.json의 packageManager가 yarn@x.y.z 로 명시된 경우 그 버전으로 활성화
+      - name: Activate Yarn version from packageManager (if present)
+        id: yarnpm
+        run: |
+          PM=$(node -e "try{process.stdout.write(require('./package.json').packageManager||'')}catch(e){}")
+          if echo "$PM" | grep -q '^yarn@'; then
+            VER=${PM#yarn@}
+            echo "Found packageManager: yarn@${VER}"
+            corepack prepare "yarn@${VER}" --activate
+            echo "yarn_version=${VER}" >> $GITHUB_OUTPUT
+          else
+            echo "No packageManager yarn@version found; will rely on .yarnrc.yml (yarnPath) or runner default."
+          fi
+
+      # (선택) 현재 yarn 버전 확인 로그
+      - name: Check Yarn version
+        run: yarn -v
+
+      # Yarn Berry면 --immutable, Yarn v1이면 --frozen-lockfile 로 안전 설치
+      - name: Install deps (respect lockfile)
+        run: |
+          YV=$(yarn -v); YM=${YV%%.*}
+          if [ "$YM" -ge 2 ]; then
+            yarn install --immutable
+          else
+            yarn install --frozen-lockfile
+          fi
 
       - name: Update dependencies within semver ranges
         id: update
         run: |
           set -e
-          YARN_VER=$(yarn -v)
-          YARN_MAJOR=$(echo "$YARN_VER" | cut -d. -f1)
-          echo "Detected Yarn $YARN_VER"
-
-          if [ "$YARN_MAJOR" -ge 2 ]; then
-            # Yarn Berry: 워크스페이스 전체를 범위 내 최신으로 갱신
-            yarn up -R
+          YV=$(yarn -v); YM=${YV%%.*}
+          echo "Detected Yarn $YV"
+          if [ "$YM" -ge 2 ]; then
+            yarn up -R                # Yarn Berry
           else
-            # Yarn v1: 범위 내 최신으로 갱신
-            yarn upgrade
+            yarn upgrade              # Yarn v1
           fi
 
       - name: Create working branch
         run: |
           BR="chore/package-update-$(date +%Y%m%d%H%M%S)"
-          echo "$BR" > .git/branch_name
+          echo "BR=$BR" >> $GITHUB_ENV
           git checkout ${{ steps.def.outputs.base }}
           git pull --ff-only origin ${{ steps.def.outputs.base }}
           git checkout -b "$BR"
@@ -60,7 +83,7 @@ jobs:
           git add -A
           if git diff --cached --quiet; then
             echo "No changes after upgrade; nothing to commit."
-            echo "no_changes=1" >> $GITHUB_OUTPUT
+            echo "NO_CHANGES=1" >> $GITHUB_ENV
           else
             git -c user.name="github-actions[bot]" \
                 -c user.email="github-actions[bot]@users.noreply.github.com" \
@@ -68,18 +91,14 @@ jobs:
           fi
 
       - name: Push branch
-        if: steps.update.outcome == 'success'
-        run: |
-          if [ -f .git/branch_name ] && ! git diff --cached --quiet; then
-            BR=$(cat .git/branch_name)
-            git push -u origin "$BR"
-          fi
+        if: env.NO_CHANGES != '1'
+        run: git push -u origin "$BR"
 
       - name: Open PR
-        if: ${{ success() }}
+        if: env.NO_CHANGES != '1'
         uses: peter-evans/create-pull-request@v6
         with:
-          branch: ${{ github.ref_name }} # create-pull-request가 현재 브랜치를 자동 감지
+          branch: ${{ env.BR }}
           base: ${{ steps.def.outputs.base }}
           title: "package version update"
           body: "Automated update triggered by repository_dispatch."

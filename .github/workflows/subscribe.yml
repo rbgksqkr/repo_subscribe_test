@@ -1,7 +1,6 @@
 name: Repository subscribe
 
 on:
-  workflow_dispatch:
   repository_dispatch:
     types: [package-update]
 
@@ -14,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Resolve default branch
         id: def
@@ -28,48 +29,40 @@ jobs:
         run: |
           corepack enable
           corepack prepare yarn@4.9.1 --activate
+          corepack yarn -v
 
-      - name: Cache node_modules
+      # (선택) Yarn Berry 캐시 — node_modules 캐시는 보통 불필요
+      - name: Cache Yarn (Berry)
         uses: actions/cache@v4
-        id: yarn-cache
         with:
           path: |
-            **/node_modules
             .yarn/cache
-          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}
+            .yarn/install-state.gz
+          key: yarn-berry-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           restore-keys: |
-            ${{ runner.os }}-yarn-
+            yarn-berry-${{ runner.os }}-
 
-      - name: Create working branch
+      - name: Install (respect lockfile)
+        run: corepack yarn install --immutable
+
+      # 🔥 테스트 목적: 매번 변경이 생기도록 최신으로 강제 업그레이드
+      - name: Force upgrade to latest
+        run: corepack yarn up -R --latest
+
+      # (디버그) 실제 변경 확인
+      - name: Show diff
         run: |
-          BR="chore/package-update-$(date +%Y%m%d%H%M%S)"
-          echo "BR=$BR" >> $GITHUB_ENV
-          git checkout ${{ steps.def.outputs.base }}
-          git pull --ff-only origin ${{ steps.def.outputs.base }}
-          git checkout -b "$BR"
+          git status
+          git diff --name-only
 
-      - name: Install dependencies
-        if: steps.yarn-cache.outputs.cache-hit != 'true'
-        run: yarn
-
-      - name: package version update
-        run: |
-          corepack yarn up -C react@latest
-
-      - name: Commit changes
-        run: |
-          git add -A
-          git -c user.name="github-actions[bot]" \
-            -c user.email="github-actions[bot]@users.noreply.github.com" \
-            commit -m "chore: package version update"
-
-      - name: Push branch
-        run: git push -u origin "$BR"
-
+      # ✅ 수동 commit/push 없이, 이 액션 하나로 브랜치/커밋/푸시/PR까지 처리
       - name: Open PR
         uses: peter-evans/create-pull-request@v6
         with:
-          branch: ${{ env.BR }}
+          branch: chore/package-update-${{ github.run_id }}
           base: ${{ steps.def.outputs.base }}
+          commit-message: "chore: package version update"
           title: "package version update"
           body: "Automated update triggered by repository_dispatch."
+          labels: dependencies
+          signoff: true

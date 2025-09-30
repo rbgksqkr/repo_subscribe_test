@@ -1,0 +1,12 @@
+name: Repository subscribe
+
+on:
+  repository_dispatch:
+    types: [package-update]
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo Repository Dispatch

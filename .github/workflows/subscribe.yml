@@ -54,7 +54,7 @@ jobs:
 
       - name: package version update
         run: |
-          corepack yarn up -R react
+          corepack yarn up -R react@latest
 
       - name: Commit changes (if any)
         run: |

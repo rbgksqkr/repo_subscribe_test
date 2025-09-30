@@ -39,14 +39,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-yarn-
 
-      - name: Install dependencies
-        if: steps.yarn-cache.outputs.cache-hit != 'true'
-        run: yarn
-
-      - name: package version update
-        run: |
-          corepack yarn up -R react
-
       - name: Create working branch
         run: |
           BR="chore/package-update-$(date +%Y%m%d%H%M%S)"
@@ -54,6 +46,14 @@ jobs:
           git checkout ${{ steps.def.outputs.base }}
           git pull --ff-only origin ${{ steps.def.outputs.base }}
           git checkout -b "$BR"
+
+      - name: Install dependencies
+        if: steps.yarn-cache.outputs.cache-hit != 'true'
+        run: yarn
+
+      - name: package version update
+        run: |
+          corepack yarn up -R react
 
       - name: Commit changes (if any)
         run: |

@@ -48,7 +48,7 @@ jobs:
 
       # 🔥 테스트 목적: 매번 변경이 생기도록 최신으로 강제 업그레이드
       - name: Force upgrade to latest
-        run: corepack yarn up -R --latest
+        run: corepack yarn up -C react@latest
 
       # (디버그) 실제 변경 확인
       - name: Show diff

@@ -56,28 +56,20 @@ jobs:
         run: |
           corepack yarn up -C react@latest
 
-      - name: Commit changes (if any)
+      - name: Commit changes
         run: |
           git add -A
-          if git diff --cached --quiet; then
-            echo "NO_CHANGES=1" >> $GITHUB_ENV
-          else
-            git -c user.name="github-actions[bot]" \
-                -c user.email="github-actions[bot]@users.noreply.github.com" \
-                commit -m "chore: package version update"
-          fi
+          git -c user.name="github-actions[bot]" \
+            -c user.email="github-actions[bot]@users.noreply.github.com" \
+            commit -m "chore: package version update"
 
       - name: Push branch
-        if: env.NO_CHANGES != '1'
         run: git push -u origin "$BR"
 
       - name: Open PR
-        if: env.NO_CHANGES != '1'
         uses: peter-evans/create-pull-request@v6
         with:
           branch: ${{ env.BR }}
           base: ${{ steps.def.outputs.base }}
           title: "package version update"
           body: "Automated update triggered by repository_dispatch."
-          labels: dependencies
-          signoff: true

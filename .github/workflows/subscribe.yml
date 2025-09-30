@@ -60,6 +60,7 @@ jobs:
       - name: Open PR
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
           branch: chore/package-update-${{ github.run_id }}
           base: ${{ steps.def.outputs.base }}
           commit-message: "chore: package version update"

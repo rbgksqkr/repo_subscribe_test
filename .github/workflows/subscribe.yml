@@ -1,4 +1,4 @@
-name: Repository subscribe
+name: package version update
 
 on:
   workflow_dispatch:

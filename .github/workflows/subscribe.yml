@@ -14,12 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Resolve default branch
-        id: def
-        run: echo "base=${{ github.event.repository.default_branch }}" >> $GITHUB_OUTPUT
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -32,37 +26,29 @@ jobs:
           corepack prepare yarn@4.9.1 --activate
           corepack yarn -v
 
-      # (선택) Yarn Berry 캐시 — node_modules 캐시는 보통 불필요
-      - name: Cache Yarn (Berry)
+      - name: Cache Yarn
         uses: actions/cache@v4
         with:
           path: |
             .yarn/cache
             .yarn/install-state.gz
-          key: yarn-berry-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          key: yarn-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           restore-keys: |
-            yarn-berry-${{ runner.os }}-
+            yarn-${{ runner.os }}-
 
       - name: Install (respect lockfile)
         run: corepack yarn install --immutable
 
-      # 🔥 테스트 목적: 매번 변경이 생기도록 최신으로 강제 업그레이드
-      - name: Force upgrade to latest
+      # 특정 패키지 버전업 명시적 선언
+      - name: package version update
         run: corepack yarn up -C react@latest
 
-      # (디버그) 실제 변경 확인
-      - name: Show diff
-        run: |
-          git status
-          git diff --name-only
-
-      # ✅ 수동 commit/push 없이, 이 액션 하나로 브랜치/커밋/푸시/PR까지 처리
       - name: Open PR
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
           branch: chore/package-update-${{ github.run_id }}
-          base: ${{ steps.def.outputs.base }}
+          base: ${{ github.event.repository.default_branch }}
           commit-message: "chore: package version update"
           title: "package version update"
           body: "Automated update triggered by repository_dispatch."

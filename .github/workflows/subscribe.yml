@@ -18,56 +18,58 @@ jobs:
 
       - name: Resolve default branch
         id: def
-        run: |
-          echo "base=${{ github.event.repository.default_branch }}" >> $GITHUB_OUTPUT
+        run: echo "base=${{ github.event.repository.default_branch }}" >> $GITHUB_OUTPUT
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22" # Node 16.10+면 corepack 포함
+          node-version: "22" # Corepack 포함
 
-      # ← 중요: checkout 직후 corepack 활성화
-      - name: Enable corepack
+      # 1) Corepack 활성화
+      - name: Enable Corepack
         run: corepack enable
 
-      # package.json의 packageManager가 yarn@x.y.z 로 명시된 경우 그 버전으로 활성화
-      - name: Activate Yarn version from packageManager (if present)
+      # 2) packageManager 기반으로 Yarn 버전 강제 활성화
+      - name: Activate Yarn from packageManager
         id: yarnpm
         run: |
-          PM=$(node -e "try{process.stdout.write(require('./package.json').packageManager||'')}catch(e){}")
-          if echo "$PM" | grep -q '^yarn@'; then
-            VER=${PM#yarn@}
-            echo "Found packageManager: yarn@${VER}"
+          set -e
+          VER=$(node -p "require('./package.json').packageManager?.split('@')[1] || ''")
+          if [ -z "$VER" ]; then
+            echo "packageManager에 yarn@버전이 없습니다. (.yarnrc.yml의 yarnPath 사용 중인지 확인)"
+          else
+            echo "Activating yarn@${VER}"
             corepack prepare "yarn@${VER}" --activate
             echo "yarn_version=${VER}" >> $GITHUB_OUTPUT
-          else
-            echo "No packageManager yarn@version found; will rely on .yarnrc.yml (yarnPath) or runner default."
           fi
 
-      # (선택) 현재 yarn 버전 확인 로그
-      - name: Check Yarn version
-        run: yarn -v
+      # 3) 실제 쓰일 바이너리/버전 확인 (중요: 'corepack yarn')
+      - name: Check Yarn binary & version
+        run: |
+          echo "which yarn      : $(command -v yarn || true)"
+          echo "corepack bins   : $(corepack bins || true)"
+          corepack yarn -v
 
-      # Yarn Berry면 --immutable, Yarn v1이면 --frozen-lockfile 로 안전 설치
+      # 4) 설치 단계도 모두 'corepack yarn' 사용
       - name: Install deps (respect lockfile)
         run: |
-          YV=$(yarn -v); YM=${YV%%.*}
+          YV=$(corepack yarn -v); YM=${YV%%.*}
           if [ "$YM" -ge 2 ]; then
-            yarn install --immutable
+            corepack yarn install --immutable
           else
-            yarn install --frozen-lockfile
+            corepack yarn install --frozen-lockfile
           fi
 
+      # 5) 업데이트도 'corepack yarn' 사용
       - name: Update dependencies within semver ranges
         id: update
         run: |
-          set -e
-          YV=$(yarn -v); YM=${YV%%.*}
+          YV=$(corepack yarn -v); YM=${YV%%.*}
           echo "Detected Yarn $YV"
           if [ "$YM" -ge 2 ]; then
-            yarn up -R                # Yarn Berry
+            corepack yarn up -R
           else
-            yarn upgrade              # Yarn v1
+            corepack yarn upgrade
           fi
 
       - name: Create working branch
@@ -82,7 +84,6 @@ jobs:
         run: |
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes after upgrade; nothing to commit."
             echo "NO_CHANGES=1" >> $GITHUB_ENV
           else
             git -c user.name="github-actions[bot]" \

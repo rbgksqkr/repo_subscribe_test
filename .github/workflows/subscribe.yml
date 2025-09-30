@@ -50,7 +50,5 @@ jobs:
           branch: chore/package-update-${{ github.run_id }}
           base: ${{ github.event.repository.default_branch }}
           commit-message: "chore: package version update"
-          title: "package version update"
-          body: "Automated update triggered by repository_dispatch."
-          labels: dependencies
-          signoff: true
+          title: "chore: package version update"
+          body: "패키지 버전이 업데이트되어 생성된 PR입니다. 프로덕션 스킴으로 반영사항을 확인해주세요."

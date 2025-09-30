@@ -25,8 +25,7 @@ jobs:
       - name: Setup Node & Yarn
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
-          cache: "yarn"
+          node-version: "22"
       - run: corepack enable
 
       - name: Install (no change) to warm cache

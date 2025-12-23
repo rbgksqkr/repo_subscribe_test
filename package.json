@@ -2,6 +2,6 @@
   "name": "repo_subscribe_test",
   "packageManager": "yarn@4.9.1",
   "dependencies": {
-    "react": "^18.3.0"
+    "react": "^19.1.1"
   }
 }
